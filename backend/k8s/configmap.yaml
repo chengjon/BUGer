@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buger-config
+  namespace: buger-system
+  labels:
+    app: buger
+    component: config
+data:
+  # 应用配置
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  API_PREFIX: "/api"
+  HEALTH_CHECK_INTERVAL: "30"
+  CACHE_TTL_SEARCH: "300"
+  CACHE_TTL_STATS: "3600"
+  CACHE_TTL_TIMESERIES: "21600"
+
+  # Redis 配置
+  REDIS_DB: "0"
+  REDIS_RETRY_MAX: "5"
+
+  # MongoDB 配置
+  MONGODB_POOL_SIZE_MAX: "20"
+  MONGODB_POOL_SIZE_MIN: "5"
+  MONGODB_TIMEOUT: "30000"
+
+  # 性能配置
+  RATE_LIMIT_REQUESTS: "200"
+  RATE_LIMIT_WINDOW: "60"
+  REQUEST_TIMEOUT: "30000"
+  MAX_BATCH_SIZE: "20"
+
+  # 安全配置
+  API_KEY_PREFIX: "sk_"
+  CORS_ALLOW_CREDENTIALS: "true"

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: buger-system
+  labels:
+    app: buger
+    phase: production
+    environment: prod

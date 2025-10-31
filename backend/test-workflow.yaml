@@ -1,0 +1,213 @@
+# 自动化测试工作流配置文件
+# 为 Task Master AI 设计的完整测试流程
+
+name: "BUGer API 自动化测试工作流"
+description: "自动化执行 BUGer API 的完整测试流程，包括环境配置、依赖安装、数据库初始化、测试执行和报告生成"
+
+environment:
+  # 工作目录设置
+  working_dir: "/opt/iflow/buger/backend"
+  
+  # 数据库连接配置
+  mongodb:
+    host: "localhost"
+    port: 27017
+    username: "mongo"
+    password: "c790414J"
+    database: "buger"
+    auth_source: "admin"
+    
+  redis:
+    host: "localhost"
+    port: 6380
+    password: ""
+    database: 1
+
+tasks:
+  # 1. 验证数据库连接
+  - name: "验证数据库连接"
+    description: "检查 MongoDB 和 Redis 是否可访问"
+    steps:
+      - name: "检查 MongoDB 连接"
+        shell: |
+          echo "正在测试 MongoDB 连接..."
+          mongosh "mongodb://${environment.mongodb.username}:${environment.mongodb.password}@${environment.mongodb.host}:${environment.mongodb.port}/admin?authSource=${environment.mongodb.auth_source}" --eval "db.runCommand({ connectionStatus: 1 })" > /dev/null 2>&1
+          if [ $? -eq 0 ]; then
+            echo "✓ MongoDB 连接成功"
+          else
+            echo "✗ MongoDB 连接失败"
+            exit 1
+          fi
+          
+      - name: "检查 Redis 连接"
+        shell: |
+          echo "正在测试 Redis 连接..."
+          if [ -z "${environment.redis.password}" ]; then
+            redis-cli -h ${environment.redis.host} -p ${environment.redis.port} -n ${environment.redis.database} ping > /dev/null 2>&1
+          else
+            redis-cli -h ${environment.redis.host} -p ${environment.redis.port} -a ${environment.redis.password} -n ${environment.redis.database} ping > /dev/null 2>&1
+          fi
+          
+          if [ $? -eq 0 ]; then
+            echo "✓ Redis 连接成功"
+          else
+            echo "✗ Redis 连接失败"
+            exit 1
+          fi
+
+  # 2. 更新环境配置
+  - name: "更新环境配置"
+    description: "备份原始 .env 文件并使用新的数据库配置"
+    steps:
+      - name: "备份原始 .env 文件"
+        shell: |
+          cd ${environment.working_dir}
+          if [ -f ".env" ]; then
+            cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+            echo "✓ 原始 .env 文件已备份"
+          else
+            echo "⚠ 原始 .env 文件不存在，将创建新的配置文件"
+          fi
+          
+      - name: "创建新的 .env 文件"
+        shell: |
+          cd ${environment.working_dir}
+          cat > .env << EOF
+# Environment Configuration for BUGer API
+NODE_ENV=development
+PORT=3050
+
+# MongoDB Configuration
+MONGODB_URI=mongodb://${environment.mongodb.username}:${environment.mongodb.password}@${environment.mongodb.host}:${environment.mongodb.port}/${environment.mongodb.database}?authSource=${environment.mongodb.auth_source}
+MONGODB_DATABASE=${environment.mongodb.database}
+
+# Redis Configuration
+REDIS_HOST=${environment.redis.host}
+REDIS_PORT=${environment.redis.port}
+REDIS_PASSWORD=${environment.redis.password}
+REDIS_DB=${environment.redis.database}
+
+# Application Configuration
+CORS_ORIGIN=http://localhost:3000
+
+# Logging
+LOG_LEVEL=debug
+
+# API Configuration
+API_KEY_PREFIX=sk_
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=200
+
+# Cache Configuration
+CACHE_TTL_SEARCH=300
+CACHE_TTL_PROJECT=3600
+
+# Security
+BCRYPT_ROUNDS=10
+EOF
+          echo "✓ 新的 .env 文件已创建"
+
+  # 3. 安装项目依赖
+  - name: "安装项目依赖"
+    description: "检查并安装项目所需的 Node.js 依赖"
+    steps:
+      - name: "安装依赖"
+        shell: |
+          cd ${environment.working_dir}
+          if [ ! -d "node_modules" ]; then
+            echo "正在安装项目依赖..."
+            npm install
+            if [ $? -eq 0 ]; then
+              echo "✓ 依赖安装成功"
+            else
+              echo "✗ 依赖安装失败"
+              exit 1
+            fi
+          else
+            echo "✓ 依赖已存在，跳过安装"
+          fi
+
+  # 4. 初始化数据库
+  - name: "初始化数据库"
+    description: "运行数据库初始化脚本"
+    steps:
+      - name: "运行初始化脚本"
+        shell: |
+          cd ${environment.working_dir}
+          echo "正在初始化数据库..."
+          npm run db:init
+          if [ $? -eq 0 ]; then
+            echo "✓ 数据库初始化成功"
+          else
+            echo "✗ 数据库初始化失败"
+            exit 1
+          fi
+
+  # 5. 执行集成测试
+  - name: "执行集成测试"
+    description: "运行集成测试套件"
+    steps:
+      - name: "运行集成测试"
+        shell: |
+          cd ${environment.working_dir}
+          echo "正在运行集成测试..."
+          npm run test:integration
+          if [ $? -eq 0 ]; then
+            echo "✓ 集成测试执行成功"
+          else
+            echo "✗ 集成测试执行失败"
+            exit 1
+          fi
+
+  # 6. 生成测试覆盖率报告
+  - name: "生成测试覆盖率报告"
+    description: "运行完整测试套件并生成覆盖率报告"
+    steps:
+      - name: "生成覆盖率报告"
+        shell: |
+          cd ${environment.working_dir}
+          echo "正在生成测试覆盖率报告..."
+          npm test -- --coverage
+          if [ $? -eq 0 ]; then
+            echo "✓ 测试覆盖率报告生成成功"
+            echo "报告位置: ${environment.working_dir}/coverage/"
+          else
+            echo "✗ 测试覆盖率报告生成失败"
+            exit 1
+          fi
+
+  # 7. 清理测试数据
+  - name: "清理测试数据"
+    description: "清理测试过程中产生的数据"
+    steps:
+      - name: "清理说明"
+        shell: |
+          echo "清理测试数据说明："
+          echo "1. 测试数据存储在 ${environment.mongodb.database} 数据库中"
+          echo "2. 如需清理测试数据，请手动删除该数据库或运行清理脚本"
+          echo "3. 测试完成后，可以恢复原始 .env 文件："
+          echo "   cp .env.backup.* .env (选择最新的备份文件)"
+
+# 工作流执行完成后的操作
+on_complete:
+  - name: "工作流完成"
+    shell: |
+      echo "========================================="
+      echo "自动化测试工作流执行完成！"
+      echo "========================================="
+      echo "执行摘要："
+      echo "  ✓ 数据库连接验证"
+      echo "  ✓ 环境配置更新"
+      echo "  ✓ 依赖安装"
+      echo "  ✓ 数据库初始化"
+      echo "  ✓ 集成测试执行"
+      echo "  ✓ 覆盖率报告生成"
+      echo ""
+      echo "请查看以下输出以获取详细结果："
+      echo "  - 测试结果: 终端输出"
+      echo "  - 覆盖率报告: ${environment.working_dir}/coverage/index.html"
+      echo ""
+      echo "如需恢复原始配置，请执行："
+      echo "  cp ${environment.working_dir}/.env.backup.* ${environment.working_dir}/.env"

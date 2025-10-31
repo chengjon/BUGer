@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: buger-system
+  labels:
+    app: buger
+    component: redis
+spec:
+  replicas: 1  # 单实例 Redis，建议生产环境使用 Redis Sentinel 或 Cluster
+  strategy:
+    type: Recreate  # Redis 需要重建而非滚动更新
+  selector:
+    matchLabels:
+      app: buger
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: buger
+        component: redis
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: redis
+        image: redis:7.2-alpine  # 使用 alpine 以减少镜像大小
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        - /usr/local/etc/redis/redis.conf
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+
+        # 资源配置
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        # 健康检查
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+
+        # 卷挂载
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /usr/local/etc/redis
+
+      # 卷定义
+      volumes:
+      - name: redis-data
+        emptyDir: {}  # 开发环境可用，生产环境建议使用 PVC
+      - name: redis-config
+        configMap:
+          name: redis-config
+
+      # 终止宽限期
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: buger-system
+  labels:
+    app: buger
+    component: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: buger
+    component: redis
+  ports:
+  - port: 6379
+    targetPort: redis
+    protocol: TCP
+  sessionAffinity: None
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: buger-system
+  labels:
+    app: buger
+    component: redis
+data:
+  redis.conf: |
+    # Redis Configuration
+    port 6379
+    bind 0.0.0.0
+
+    # 持久化配置
+    save 900 1          # 900 秒内至少 1 个键被改动时保存
+    save 300 10         # 300 秒内至少 10 个键被改动时保存
+    save 60 10000       # 60 秒内至少 10000 个键被改动时保存
+
+    # AOF 持久化 (推荐)
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+
+    # 内存管理
+    maxmemory 512mb     # 最大内存限制
+    maxmemory-policy allkeys-lru  # LRU 驱逐策略
+
+    # 日志
+    loglevel notice
+
+    # 慢查询日志
+    slowlog-log-slower-than 10000  # 微秒
+    slowlog-max-len 128
+
+    # 客户端超时
+    timeout 0
+    tcp-keepalive 300
+
+    # 数据库数量
+    databases 16

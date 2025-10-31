@@ -1,0 +1,48 @@
+services:
+  # MongoDB 数据库
+  mongodb:
+    image: mongo:latest
+    container_name: buger-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: c790414J
+      MONGO_INITDB_DATABASE: buger
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+    networks:
+      - buger-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:alpine
+    container_name: buger-redis
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass ''
+    volumes:
+      - redis_data:/data
+    networks:
+      - buger-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  buger-network:
+    driver: bridge

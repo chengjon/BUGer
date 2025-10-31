@@ -1,0 +1,197 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: buger-system
+  labels:
+    app: prometheus
+    prometheus: kube-prometheus
+data:
+  prometheus.yml: |
+    # Prometheus 配置文件
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'buger-prod'
+        environment: 'production'
+
+    # 告警规则
+    rule_files:
+      - '/etc/prometheus/rules/alert-rules.yaml'
+
+    # Alertmanager 配置
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets: ['alertmanager:9093']
+
+    scrape_configs:
+    # Prometheus 自身监控
+    - job_name: 'prometheus'
+      static_configs:
+      - targets: ['localhost:9090']
+
+    # BUGer API 服务监控
+    - job_name: 'buger-app'
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - buger-system
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+
+    # MongoDB 监控
+    - job_name: 'mongodb'
+      static_configs:
+      - targets: ['mongodb-exporter:9216']
+      metrics_path: '/metrics'
+
+    # Redis 监控
+    - job_name: 'redis'
+      static_configs:
+      - targets: ['redis-exporter:9121']
+      metrics_path: '/metrics'
+
+    # Kubernetes 节点监控
+    - job_name: 'kubernetes-nodes'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+    # Kubernetes Pods 监控
+    - job_name: 'kubernetes-pods'
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: buger-system
+  labels:
+    app: prometheus
+data:
+  alert-rules.yaml: |
+    groups:
+    - name: buger-app-alerts
+      interval: 30s
+      rules:
+      # API 健康检查
+      - alert: BugerAppDown
+        expr: up{job="buger-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: buger-app
+        annotations:
+          summary: "BUGer API 服务已宕机"
+          description: "BUGer API 实例 {{ $labels.kubernetes_pod_name }} 无法访问"
+
+      # 高错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="buger-app",status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: buger-app
+        annotations:
+          summary: "BUGer API 错误率过高"
+          description: "过去 5 分钟内错误率为 {{ $value | humanizePercentage }}"
+
+      # 高响应时间告警
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="buger-app"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: buger-app
+        annotations:
+          summary: "BUGer API 响应时间过长"
+          description: "p95 响应时间为 {{ $value | humanizeDuration }}"
+
+      # MongoDB 连接池耗尽
+      - alert: MongoDBConnectionPoolExhausted
+        expr: mongodb_connections_available < 2
+        for: 2m
+        labels:
+          severity: critical
+          service: mongodb
+        annotations:
+          summary: "MongoDB 连接池即将耗尽"
+          description: "可用连接数为 {{ $value }}"
+
+      # Redis 内存使用过高
+      - alert: HighRedisMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis 内存使用率过高"
+          description: "内存使用率为 {{ $value | humanizePercentage }}"
+
+      # Pod 频繁重启
+      - alert: PodRestartingTooOften
+        expr: rate(kube_pod_container_status_restarts_total[30m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "Pod {{ $labels.pod }} 频繁重启"
+          description: "在过去 30 分钟内重启 {{ $value }} 次"
+
+      # 磁盘空间不足
+      - alert: PersistentVolumeAlmostFull
+        expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "持久化卷 {{ $labels.persistentvolumeclaim }} 空间不足"
+          description: "使用率为 {{ $value | humanizePercentage }}"

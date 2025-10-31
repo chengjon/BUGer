@@ -1,0 +1,897 @@
+openapi: 3.0.0
+
+info:
+  title: BUG 管理知识库系统 API
+  description: 集中化 BUG 管理和知识库系统，支持 BUG 上报、搜索、解决方案管理
+  version: 1.0.0
+  contact:
+    name: BUGer 团队
+  license:
+    name: MIT
+
+servers:
+  - url: https://buger.example.com/api
+    description: 生产环境
+  - url: http://localhost:3000/api
+    description: 本地开发环境
+
+tags:
+  - name: Bugs
+    description: BUG 报告管理
+  - name: Search
+    description: BUG 搜索功能
+  - name: Solutions
+    description: 解决方案管理
+  - name: Projects
+    description: 项目配置管理
+  - name: Statistics
+    description: 统计分析
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 项目 API Key，用于认证请求
+
+  schemas:
+    # 错误响应
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: 错误代码
+          example: "INVALID_REQUEST"
+        message:
+          type: string
+          description: 错误消息
+          example: "API Key 无效或已过期"
+        details:
+          type: object
+          description: 详细错误信息（可选）
+      required:
+        - code
+        - message
+
+    # BUG 报告
+    BugReport:
+      type: object
+      properties:
+        bugId:
+          type: string
+          description: BUG 全局唯一 ID
+          example: "BUG-20251027-001"
+        projectId:
+          type: string
+          description: 来源项目 ID
+          example: "proj-123"
+        projectName:
+          type: string
+          description: 项目名称
+          example: "用户服务"
+        title:
+          type: string
+          description: BUG 标题
+          minLength: 5
+          maxLength: 500
+          example: "用户登录时数据库连接超时"
+        description:
+          type: string
+          description: BUG 详细描述
+          maxLength: 10000
+          example: "在高并发场景下，用户登录时...
+        category:
+          type: string
+          description: BUG 分类
+          example: "数据库"
+        severity:
+          type: string
+          enum: ["critical", "high", "medium", "low"]
+          description: 严重程度
+          example: "high"
+        status:
+          type: string
+          enum: ["open", "investigating", "resolved"]
+          description: BUG 状态
+          example: "open"
+        errorCode:
+          type: string
+          description: 错误代码
+          example: "TIMEOUT_ERR"
+        errorMessage:
+          type: string
+          description: 错误信息
+          example: "Connection timeout after 30000ms"
+        errorType:
+          type: string
+          description: 错误类型
+          example: "TimeoutError"
+        stackTrace:
+          type: string
+          description: 堆栈跟踪
+          maxLength: 1048576
+          example: "at Database.connect (db.js:123)"
+        environment:
+          type: object
+          properties:
+            os:
+              type: string
+              example: "Linux"
+            runtime:
+              type: string
+              example: "Node.js"
+            runtimeVersion:
+              type: string
+              example: "18.0.0"
+            appVersion:
+              type: string
+              example: "2.1.0"
+            platform:
+              type: string
+              example: "Linux"
+        context:
+          type: object
+          description: 自定义上下文信息
+          properties:
+            userId:
+              type: string
+            sessionId:
+              type: string
+            requestId:
+              type: string
+            customData:
+              type: object
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["数据库", "性能", "高并发"]
+        components:
+          type: array
+          items:
+            type: string
+          example: ["authentication", "user-service"]
+        occurrenceCount:
+          type: integer
+          description: 发生次数
+          example: 1
+        lastOccurrenceAt:
+          type: string
+          format: date-time
+          description: 最后发生时间
+        hasSolution:
+          type: boolean
+          description: 是否有解决方案
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+        updatedAt:
+          type: string
+          format: date-time
+          description: 更新时间
+      required:
+        - projectId
+        - title
+        - errorCode
+        - severity
+
+    # BUG 创建请求
+    CreateBugRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 10000
+        category:
+          type: string
+        severity:
+          type: string
+          enum: ["critical", "high", "medium", "low"]
+          default: "medium"
+        errorCode:
+          type: string
+          maxLength: 50
+        errorMessage:
+          type: string
+        errorType:
+          type: string
+        stackTrace:
+          type: string
+          maxLength: 1048576
+        environment:
+          type: object
+          properties:
+            os:
+              type: string
+            runtime:
+              type: string
+            runtimeVersion:
+              type: string
+            appVersion:
+              type: string
+            platform:
+              type: string
+        context:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+        components:
+          type: array
+          items:
+            type: string
+      required:
+        - title
+        - severity
+        - errorCode
+
+    # 批量 BUG 创建请求
+    BatchCreateBugRequest:
+      type: object
+      properties:
+        bugs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateBugRequest"
+          minItems: 1
+          maxItems: 20
+          description: BUG 列表，最多 20 个
+      required:
+        - bugs
+
+    # 搜索响应
+    SearchResult:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: 总记录数
+          example: 125
+        page:
+          type: integer
+          description: 当前页码
+          example: 1
+        pageSize:
+          type: integer
+          description: 每页记录数
+          example: 20
+        totalPages:
+          type: integer
+          description: 总页数
+          example: 7
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BugReport"
+        facets:
+          type: object
+          description: 搜索的统计信息
+          properties:
+            bySeverity:
+              type: object
+            byStatus:
+              type: object
+            byCategory:
+              type: object
+
+    # 解决方案
+    Solution:
+      type: object
+      properties:
+        solutionId:
+          type: string
+          format: uuid
+        bugId:
+          type: string
+        bugIds:
+          type: array
+          items:
+            type: string
+        title:
+          type: string
+        description:
+          type: string
+        fix:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              order:
+                type: integer
+              title:
+                type: string
+              description:
+                type: string
+              code:
+                type: string
+        preventionTips:
+          type: array
+          items:
+            type: string
+        preventionCode:
+          type: string
+        status:
+          type: string
+          enum: ["draft", "verified", "deprecated"]
+        verifiedBy:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+        effectiveness:
+          type: number
+          minimum: 0
+          maximum: 5
+        usageCount:
+          type: integer
+        feedbackCount:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        references:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              url:
+                type: string
+              type:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # 项目配置
+    Project:
+      type: object
+      properties:
+        projectId:
+          type: string
+        projectName:
+          type: string
+        description:
+          type: string
+        team:
+          type: string
+        settings:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            autoCapture:
+              type: boolean
+            sampleRate:
+              type: number
+              minimum: 0
+              maximum: 1
+            maxStackTraceLength:
+              type: integer
+            enableNotification:
+              type: boolean
+        rateLimit:
+          type: object
+          properties:
+            requestsPerMinute:
+              type: integer
+              example: 200
+            batchSizeLimit:
+              type: integer
+              example: 20
+        stats:
+          type: object
+          properties:
+            totalBugs:
+              type: integer
+            totalReports:
+              type: integer
+            lastReportAt:
+              type: string
+              format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # 统计信息
+    Statistics:
+      type: object
+      properties:
+        totalBugs:
+          type: integer
+          description: 总 BUG 数
+          example: 1250
+        totalProjects:
+          type: integer
+          description: 总项目数
+          example: 25
+        totalReports:
+          type: integer
+          description: 总上报数
+          example: 5000
+        bySeverity:
+          type: object
+          properties:
+            critical:
+              type: integer
+            high:
+              type: integer
+            medium:
+              type: integer
+            low:
+              type: integer
+        byStatus:
+          type: object
+          properties:
+            open:
+              type: integer
+            investigating:
+              type: integer
+            resolved:
+              type: integer
+        resolutionRate:
+          type: number
+          description: 解决率（0-1）
+          example: 0.72
+        trend:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+
+  responses:
+    UnauthorizedError:
+      description: API Key 无效或缺失
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    ForbiddenError:
+      description: 无权限访问该资源
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFoundError:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    RateLimitError:
+      description: 超过速率限制
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "RATE_LIMIT_EXCEEDED"
+            message: "已超过每分钟 200 个请求的限制"
+            details:
+              remaining: 0
+              reset: 1635336000
+
+    ValidationError:
+      description: 请求参数验证失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "VALIDATION_ERROR"
+            message: "请求参数验证失败"
+            details:
+              field: "title"
+              error: "最小长度为 5"
+
+    ConflictError:
+      description: 资源冲突（如重复）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /bugs:
+    post:
+      summary: 提交单个 BUG 报告
+      tags:
+        - Bugs
+      description: 提交一个新的 BUG 报告到系统
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBugRequest"
+      responses:
+        201:
+          description: BUG 报告创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bugId:
+                    type: string
+                    example: "BUG-20251027-001"
+                  status:
+                    type: string
+                    example: "created"
+                  createdAt:
+                    type: string
+                    format: date-time
+        400:
+          $ref: "#/components/responses/ValidationError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitError"
+
+  /bugs/batch:
+    post:
+      summary: 批量提交 BUG 报告
+      tags:
+        - Bugs
+      description: 一次提交多个 BUG 报告（最多 20 个）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchCreateBugRequest"
+      responses:
+        201:
+          description: BUG 报告批量创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bugIds:
+                    type: array
+                    items:
+                      type: string
+                  successful:
+                    type: integer
+                  failed:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: object
+        400:
+          $ref: "#/components/responses/ValidationError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitError"
+
+  /bugs/search:
+    get:
+      summary: 搜索 BUG 报告
+      tags:
+        - Search
+      description: 使用关键词、错误代码或堆栈信息搜索 BUG
+      parameters:
+        - name: q
+          in: query
+          description: 搜索关键词
+          schema:
+            type: string
+          example: "database connection timeout"
+        - name: errorCode
+          in: query
+          description: 错误代码
+          schema:
+            type: string
+          example: "TIMEOUT_ERR"
+        - name: severity
+          in: query
+          description: 严重程度筛选（支持多选）
+          schema:
+            type: array
+            items:
+              type: string
+              enum: ["critical", "high", "medium", "low"]
+        - name: status
+          in: query
+          description: BUG 状态筛选
+          schema:
+            type: array
+            items:
+              type: string
+              enum: ["open", "investigating", "resolved"]
+        - name: category
+          in: query
+          description: BUG 分类
+          schema:
+            type: string
+        - name: projectId
+          in: query
+          description: 项目 ID
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          description: 开始日期（ISO 8601）
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: 结束日期（ISO 8601）
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          description: 页码（从 1 开始）
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          description: 每页记录数
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: sort
+          in: query
+          description: 排序字段（relevance, createdAt, occurrenceCount）
+          schema:
+            type: string
+            default: "relevance"
+      responses:
+        200:
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+        400:
+          $ref: "#/components/responses/ValidationError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitError"
+
+  /bugs/{bugId}:
+    get:
+      summary: 获取 BUG 详情
+      tags:
+        - Bugs
+      parameters:
+        - name: bugId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: BUG 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BugReport"
+        404:
+          $ref: "#/components/responses/NotFoundError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /bugs/{bugId}/solution:
+    patch:
+      summary: 更新 BUG 的解决方案
+      tags:
+        - Solutions
+      parameters:
+        - name: bugId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                fix:
+                  type: string
+                steps:
+                  type: array
+                  items:
+                    type: object
+                preventionTips:
+                  type: array
+                  items:
+                    type: string
+                status:
+                  type: string
+                  enum: ["draft", "verified", "deprecated"]
+              required:
+                - title
+                - fix
+      responses:
+        200:
+          description: 解决方案更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Solution"
+        400:
+          $ref: "#/components/responses/ValidationError"
+        404:
+          $ref: "#/components/responses/NotFoundError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /projects/{projectId}/bugs:
+    get:
+      summary: 获取项目的 BUG 列表
+      tags:
+        - Projects
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: 项目 BUG 列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+        404:
+          $ref: "#/components/responses/NotFoundError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /stats:
+    get:
+      summary: 获取全局统计信息
+      tags:
+        - Statistics
+      description: 获取 BUG 统计、趋势数据等
+      parameters:
+        - name: projectId
+          in: query
+          description: 可选，限制到特定项目
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        200:
+          description: 统计信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Statistics"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /projects:
+    get:
+      summary: 获取项目列表
+      tags:
+        - Projects
+      responses:
+        200:
+          description: 项目列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /projects/{projectId}:
+    get:
+      summary: 获取项目详情
+      tags:
+        - Projects
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: 项目详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        404:
+          $ref: "#/components/responses/NotFoundError"
+        401:
+          $ref: "#/components/responses/UnauthorizedError"
