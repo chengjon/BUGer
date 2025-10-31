@@ -532,6 +532,6 @@ curl -X GET "http://localhost:3050/api/bugs?search=测试&project_name=TestProje
 
 **报告生成时间**: 2025-10-31
 **报告更新时间**: 2025-10-31 10:20
-**报告生成人**: Claude (AI Assistant)
+**报告生成人**: JohnC & iFLow
 **实施状态**: ✅ 已完成
 **审核状态**: 待人工确认

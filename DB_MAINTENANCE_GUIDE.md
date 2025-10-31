@@ -483,6 +483,6 @@ node scripts/db-health-check.js --fix 2>&1 | tee -a /var/log/buger/health-check-
 
 ---
 
-**文档维护**: Claude (AI Assistant)
+**文档维护**: JohnC & iFLow
 **最后更新**: 2025-10-31
 **版本**: 1.0

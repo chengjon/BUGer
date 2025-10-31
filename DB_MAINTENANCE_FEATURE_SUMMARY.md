@@ -436,7 +436,7 @@ node scripts/db-health-check.js --fix 2>&1 | \
 
 ---
 
-**功能开发**: Claude (AI Assistant)
+**功能开发**: JohnC & iFLow
 **开发时间**: 2025-10-31
 **测试状态**: ✅ 已完成
 **生产就绪**: ✅ 可用于生产环境

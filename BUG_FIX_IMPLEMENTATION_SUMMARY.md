@@ -158,6 +158,6 @@ GET /api/bugs?search=登录失败&project_name=MyStocks
 ---
 
 **修复完成时间**: 2025-10-31 10:20
-**修复执行人**: Claude (AI Assistant)
+**修复执行人**: JohnC & iFLow
 **BUGer服务状态**: ✅ 正常运行 (http://localhost:3050)
 **数据完整性**: ✅ 100% (13/13 bugs with new fields)
